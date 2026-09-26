@@ -1,0 +1,188 @@
+[package]
+# THIS NAME IS SHIPPED, not internal. It becomes /usr/bin/<name>, the icon
+# filename, Exec= and StartupWMClass= in the desktop entry, and the process a
+# user sees in a task manager. While it was the working title the installed
+# product was called "jarvis-desktop" everywhere except the launcher label.
+# KEPT IN STEP WITH tauri.conf.json's "version" ON PURPOSE -- W4, 2026-08-29,
+# corrected 2026-08-29 (Jarvis: this undersold its own reach). tauri.conf.json's
+# own field is what the updater and Add/Remove Programs actually read (Tauri's
+# codegen prefers it over this one whenever it is set, reference/config/#version);
+# THIS one reaches a customer TWICE -- env!("CARGO_PKG_VERSION") in main.rs's
+# startup-log line, AND in mcp.rs's serverInfo.version, which is what any MCP
+# client connecting to this app's own memory server is told its version is.
+# Two numbers that happen to agree today and are free to drift apart tomorrow
+# is exactly the shape of the bug this fix exists for -- so they are bumped
+# together, always, and startup.rs::the_cargo_version_matches_the_config now
+# fails the build if they ever don't.
+name = "remembrancer"
+version = "1.6.0"
+edition = "2021"
+description = "Desktop shell that runs the assistant locally and streams it live."
+rust-version = "1.77"
+
+# `native-openai` — a disposable VERIFICATION-BUILD switch, not a product one.
+# Added 2026-09-02 (Mason, per Beck's Windows sign-off) because
+# `engine/mod.rs::native_openai_enabled` had exactly two levers before this —
+# the shipping `NATIVE_OPENAI_ENABLED` const and a `#[cfg(test)]` override
+# with "no production path" — so the only way to get a real, running,
+# gate-ON Windows GUI binary to test was flipping the shipping const itself,
+# which is precisely what a verification pass must not do to the thing it is
+# verifying. This feature is off unless named explicitly (there is no
+# `default = [...]` list here, so a plain `cargo build` / `cargo xwin build`
+# never enables it) and it is empty of its own code — see
+# `engine/mod.rs::native_openai_enabled` for the one `cfg!(feature = ...)`
+# check it gates, and that function's own doc for the exact build command.
+[features]
+native-openai = []
+# `native-anthropic` — same disposable verification-build switch, same
+# reasoning, extended to the third wire (`engine/native/anthropic.rs`,
+# 2026-09-03). Gates `engine/mod.rs::native_anthropic_enabled`'s one
+# `cfg!(feature = ...)` check; off unless named explicitly.
+native-anthropic = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+sha2 = { version = "0.10.9", default-features = false, features = ["std"] }
+# The adapter's per-launch bearer token (see adapter.rs) must come from the OS
+# CSPRNG — hand-rolling entropy from timestamps and pids is how a security
+# token becomes guessable. 0.2 is already in the tree transitively, so this
+# adds a direct dependency and zero new compiled code.
+getrandom = "0.2"
+# Already in the tree transitively at exactly this version (tauri-runtime-wry
+# pulls it) -- this makes it a direct dependency, at zero new compiled code,
+# so `startup.rs` can install a global logger and finally see the one line
+# `tauri-runtime-wry` logs when a window/webview fails to be created (see
+# `startup::install_log_forwarder`'s doc for why that line has always gone
+# nowhere before this).
+log = { version = "0.4", features = ["std"] }
+ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# The summonable companion window's hotkey. show/hide/set_focus on the window
+# itself are core Tauri APIs and need nothing extra; registering a chord that
+# works while the app has no focus at all -- the entire point of a companion
+# you summon from inside another program -- is OS-level and this plugin is
+# the vendor's own answer to it (tauri-plugin-global-shortcut, not hand-rolled
+# platform code). Verified current 2.3.2 against tauri 2.11.5 (docs.rs,
+# 2026-09-02); no extra Cargo features needed for register/unregister/
+# on_shortcut -- see src/companion.rs for the calls actually used.
+tauri-plugin-global-shortcut = "2"
+
+# Updates. The plugin does the part that is genuinely hard to get right: it
+# verifies a minisign signature over the downloaded installer BEFORE running
+# it. Writing that by hand is how an update mechanism becomes a way to run
+# anybody's code on a customer's machine.
+#
+# `rustls-tls` rather than the default native-tls: this binary is cross-compiled
+# from Linux with cargo-xwin and there is no MSVC toolchain here to build
+# OpenSSL against. rustls carries its own roots, so the check works the same on
+# a machine with a bare certificate store.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "zip"] }
+# Opens a link in the system's default browser -- see the comment beside
+# where this is registered in main.rs for why it did not already exist.
+tauri-plugin-opener = "2"
+imap = "2.4.1"
+mail-parser = "0.11.8"
+native-tls = "0.2"
+
+# Linux draws its own folder chooser — see the comment on `pick_folder`. The
+# gtk version is pinned to the one tao already links, so there is exactly one
+# GTK in the binary.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+# WebKitGTK denies every getUserMedia() call unless something answers its own
+# "permission-request" signal — gtk's FileChooserDialog access doesn't reach
+# that; it's a webkit2gtk type. See `grant_microphone_permission` in main.rs
+# for why this exists at all. Pinned to the version wry 0.55.1 already links
+# (checked against Cargo.lock), same reasoning as gtk above: one webkit2gtk
+# resolved in the binary, not a second copy pulled in independently.
+webkit2gtk = "2.0.2"
+
+# Voice input capture moved OUT of the webview and into here, 2026-09-14 —
+# see `native_capture.rs`'s own header for the full incident. Short version:
+# `getUserMedia` -> `ScriptProcessorNode` inside WebKitGTK routes through its
+# own GStreamer-backed Web Audio implementation, and Beck's synthetic-mic
+# verification found it able to leak file descriptors without bound and
+# truncate a held recording to well under a second, `cannot create wakeup
+# pipe` in the GStreamer log — a real, measured failure, not reproduced again
+# on a second fresh VM under the same rig but not something to keep betting
+# on either. `cpal` talks to ALSA/PulseAudio directly, the same layer
+# whisper.cpp's own production voice line already depends on being sane, and
+# it is Linux-only here for the same reason gtk/webkit2gtk above are: Windows
+# already has a working `SpeechRecognitionCtor` path and never touches this.
+cpal = "0.15"
+
+# Everywhere else the plugin is the right answer and does not have the leak.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tauri-plugin-dialog = "2"
+
+# WebView2's COM types (ICoreWebView2, the PermissionRequested handler) are
+# already linked in transitively through wry/tauri-runtime-wry, but a crate
+# only in the dependency GRAPH isn't in scope as `webview2_com::...` — it has
+# to be a direct dependency of this crate too, same reasoning as webkit2gtk
+# above. Pinned to the version already in Cargo.lock so this reuses the one
+# copy wry resolves rather than a second one.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38.2"
+# A release build has no console (see `windows_subsystem` at the top of main.rs),
+# so when the app cannot open a window there is no stderr, no panic message and
+# no window -- the customer gets an empty desktop. `startup::fatal` needs one
+# thing Windows offers and Tauri cannot: a dialog with no parent window. That is
+# MessageBoxW and nothing else, so the feature list is exactly one.
+#
+# Pinned to 0.61.2 because Cargo.lock already resolves that version through the
+# tree; same reasoning as webview2-com above and webkit2gtk on Linux -- reuse
+# the copy that is already being compiled rather than adding a sixth.
+#
+# Win32_UI_Shell and Win32_System_Com are for SHGetKnownFolderPath in
+# default_workdir (main.rs) -- the known-folder lookup that finds Documents
+# even when OneDrive has redirected it, instead of assuming the literal
+# %USERPROFILE%\Documents join is where it lives.
+#
+# Win32_Security, Win32_Security_Authorization, Win32_System_Threading,
+# Win32_System_JobObjects and Win32_Storage_FileSystem are for
+# engine/native/win_shell.rs -- the write-restricted-token spawn behind the
+# opt-in `Bash` tool (decision B). Restricted tokens, ACL stamping,
+# CreateProcessAsUserW and the Job Object that lets Stop kill a whole process
+# tree, not just cmd.exe. See that file's own header for why each one is
+# there; it is the one part of this crate that cannot be exercised on the
+# Linux box this is built on, only type-checked against the real SDK headers
+# with `cargo xwin check --target x86_64-pc-windows-msvc`.
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_System_Com",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+    "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+] }
+
+# TEST-ONLY, AND BOTH ARE ALREADY IN Cargo.lock through the updater plugin, so
+# this adds no download and no new compiled code to the shipping binary.
+#
+# They exist so the signature check -- the one property of this product that a
+# customer's machine depends on and cannot inspect -- is exercised by `cargo
+# test` rather than asserted in a comment. `minisign-verify` is the SAME crate
+# tauri-plugin-updater calls, at the same version, so the tests in update.rs
+# run the real verification and not a re-implementation of it. A hand-written
+# Ed25519 check would prove that my code agrees with my code.
+[dev-dependencies]
+minisign-verify = "0.2.5"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
