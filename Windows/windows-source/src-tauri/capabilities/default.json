@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the window is allowed to do. Custom commands in generate_handler are permitted by Tauri without being listed here; the core event channel is NOT, and leaving it out is silent \u2014 invoke keeps working while every listen() is refused, so the app spawns the run and then renders nothing. THE WINDOW PERMISSIONS ARE THE SAME TRAP, and cost a shipped build: taking the border off means the app has to close, minimise and drag itself, and every one of those calls is denied unless named here. Mark, 2026-08-26: 'the x in the top left doesn't close the app after the border was removed.' It threw nothing a user could see \u2014 the button simply did nothing, on a window that no longer had a system close button to fall back on.",
+  "windows": [
+    "main",
+    "companion"
+  ],
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging",
+    "opener:default"
+  ]
+}

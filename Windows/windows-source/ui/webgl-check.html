@@ -1,0 +1,8 @@
+<!DOCTYPE html><html><body style="background:#000;color:#0f0;font:16px monospace">
+<div id="out">checking</div>
+<script>
+var c = document.createElement('canvas');
+var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+document.getElementById('out').textContent = 'webgl=' + !!gl + (gl ? ' renderer=' + gl.getParameter(gl.RENDERER) : '');
+</script>
+</body></html>
