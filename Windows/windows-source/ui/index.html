@@ -3958,6 +3958,11 @@ nav.iaTabs::-webkit-scrollbar { display: none; }
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
   color: var(--dim); font-size: 12px; white-space: nowrap;
 }
+.iaPlan[data-upgrade] { cursor: pointer; }
+.iaPlan[data-upgrade]:hover { color: var(--text); border-color: var(--sys-hi); }
+.iaPlan[data-upgrade]::after { content: 'Upgrade'; color: var(--sys-hi); font-weight: 600; }
+.proHint { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+.proHint .linkBtn { background: none; border: 0; padding: 0; color: var(--sys-hi); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .iaPlan b { color: var(--sys-hi); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 12px; }
 .iaAccountBtn {
   display: flex; align-items: center; gap: 7px; border: 1px solid var(--line);
@@ -15682,6 +15687,35 @@ function closeBrainSetup() {
   releaseSheetFocus(sheet);
 }
 
+// HELLOIM.AI PRO -- 2026-10-03, conversion rework. The one place the app
+// points at Pro on the website. Opens the real pricing section in the
+// default browser through the same `open_url` command the Ollama download
+// link uses (http(s) only, see connectors.rs). `from` lands in the URL so
+// the site's tracker can tell which in-app prompt sent the visit. Nothing in
+// the app is gated on the plan -- this is a link, never a lock.
+const PRO_URL = 'https://helloim.ai/';
+function openProPage(from) {
+  const url = PRO_URL + '?ref=app-' + encodeURIComponent(from || 'app') + '#pricing';
+  invoke('open_url', { url }).catch(() => {});
+}
+
+// Pro line for the brain chooser and first-run wizard. NO HOSTED AI (Mark,
+// 2026-10-03: not unless demand appears) -- Pro is bring-your-own-brain like
+// Free, so this never suggests Pro replaces an API key. It points at what Pro
+// actually adds. Skipped under air-gap.
+function proBrainHint(from) {
+  const p = document.createElement('p');
+  p.className = 'proHint';
+  p.append('helloim.ai Pro adds memory sync across your machines, early faces and voices, and priority support. ');
+  const a = document.createElement('button');
+  a.type = 'button';
+  a.className = 'linkBtn';
+  a.textContent = 'See Pro';
+  a.onclick = () => openProPage(from);
+  p.appendChild(a);
+  return p;
+}
+
 async function openBrainSetup() {
   let sheet = document.getElementById('brainSetupChooser');
   if (!sheet) {
@@ -15738,6 +15772,7 @@ async function openBrainSetup() {
         && (!p.connected || p.disconnected || (!active && document.body.dataset.view !== 'boardroom')));
       button(o, o.name, existing);
     }
+    if (!airgap) options.appendChild(proBrainHint('brain-chooser'));
   } catch (e) {
     note.textContent = 'Could not load setup choices. Close this window and try again. ' + String(e?.message || e);
   }
@@ -24325,7 +24360,7 @@ const Onboard = (() => {
       });
       wrap.appendChild(b);
     }
-    el.field.append(wrap, detail);
+    el.field.append(wrap, detail, proBrainHint('onboarding'));
     // Reopening the wizard with a choice already made shows it again rather
     // than looking untouched — the same reason Q7 repaints its pills.
     const chosen = BRAIN_OPTIONS.find((o) => o.id === answers.brain);
@@ -26552,7 +26587,16 @@ const Tour = (() => {
         // gap that does not exist on this server.
         if (lic.status === 'none') {
           el.textContent = 'Free';
+          // Pro upsell, 2026-10-03: a genuine Free plan (the server said so,
+          // not the placeholder) makes the badge a link to Pro.
+          if (badge) {
+            badge.dataset.upgrade = '1';
+            badge.title = 'Free plan. See what Pro adds';
+            badge.setAttribute('role', 'button');
+            badge.tabIndex = 0;
+          }
         } else {
+          if (badge) delete badge.dataset.upgrade;
           const planName = lic.plan || lic.status;
           let detail = lic.entitled ? 'Active' : 'Inactive';
           if (lic.expiresAt) {
@@ -26564,7 +26608,7 @@ const Tour = (() => {
           el.textContent = planName + ' · ' + detail;
         }
         el.dataset.real = '1';
-        if (badge) badge.title = 'Service plan';
+        if (badge && !badge.dataset.upgrade) badge.title = 'Service plan';
       } catch (e) {
         // Offline, or the session just died -- leave the placeholder. Never
         // guess a plan from a failed request.
@@ -28640,6 +28684,15 @@ const Tour = (() => {
   const iaAccountBtn = document.getElementById('iaAccountBtn');
   const iaAccountLabel = document.getElementById('iaAccountLabel');
   let iaAcctMenuEl = null;
+  // Free plan badge opens Pro (set by iaLoadPlan only when the server
+  // confirmed Free -- see data-upgrade there). Paid/unknown: does nothing.
+  const iaPlanBadgeEl = document.getElementById('iaPlanBadge');
+  if (iaPlanBadgeEl) {
+    iaPlanBadgeEl.addEventListener('click', () => { if (iaPlanBadgeEl.dataset.upgrade) openProPage('plan-badge'); });
+    iaPlanBadgeEl.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && iaPlanBadgeEl.dataset.upgrade) { e.preventDefault(); openProPage('plan-badge'); }
+    });
+  }
   function iaCloseAccountMenu() { if (iaAcctMenuEl) { iaAcctMenuEl.remove(); iaAcctMenuEl = null; } }
   iaAccountBtn.addEventListener('click', () => {
     if (iaAcctMenuEl) { iaCloseAccountMenu(); return; }
@@ -28656,10 +28709,12 @@ const Tour = (() => {
     m.style.top = (r.bottom + 6) + 'px';
     m.style.right = (window.innerWidth - r.right) + 'px';
     m.innerHTML = (email ? '<div class="railMenuEmail">' + email + '</div>' : '')
+      + '<button type="button" class="railMenuBtn" id="iaAcctPro">Plans &amp; Pro</button>'
       + '<button type="button" class="railMenuBtn" id="iaAcctClear">Clear conversation history</button>'
       + '<button type="button" class="railMenuBtn" id="iaAcctSignOut">Sign out</button>';
     document.body.appendChild(m);
     iaAcctMenuEl = m;
+    document.getElementById('iaAcctPro').addEventListener('click', () => { iaCloseAccountMenu(); openProPage('account-menu'); });
     document.getElementById('iaAcctClear').addEventListener('click', () => { iaCloseAccountMenu(); document.getElementById('clearHistoryBtn')?.click(); });
     document.getElementById('iaAcctSignOut').addEventListener('click', () => { iaCloseAccountMenu(); document.getElementById('signOut')?.click(); });
   });
