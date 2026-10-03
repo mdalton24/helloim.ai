@@ -15699,13 +15699,14 @@ function openProPage(from) {
   invoke('open_url', { url }).catch(() => {});
 }
 
-// "No key?" line for the brain chooser and first-run wizard. Hosted AI is
-// NOT shipped yet -- the copy says "coming to Pro", never that it works
-// today. Skipped under air-gap, where a cloud brain can't be chosen anyway.
+// Pro line for the brain chooser and first-run wizard. NO HOSTED AI (Mark,
+// 2026-10-03: not unless demand appears) -- Pro is bring-your-own-brain like
+// Free, so this never suggests Pro replaces an API key. It points at what Pro
+// actually adds. Skipped under air-gap.
 function proBrainHint(from) {
   const p = document.createElement('p');
   p.className = 'proHint';
-  p.append('No API key? Hosted AI is coming to helloim.ai Pro, so you can just talk. ');
+  p.append('helloim.ai Pro adds memory sync across your machines, early faces and voices, and priority support. ');
   const a = document.createElement('button');
   a.type = 'button';
   a.className = 'linkBtn';

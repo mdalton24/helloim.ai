@@ -6,7 +6,7 @@ it listens, and it uses **your** AI key — your chat goes straight to the AI pr
 - **Your chat and key go straight to your AI, not through us.** Bring your own brain (Claude, OpenAI, Gemini, or a local model); your chat and key go straight to it. Pick a local model and the model call stays on your machine. (The optional Google connector routes Gmail/Calendar tokens through us — the one exception.)
 - **Good to know.** Sign-in uses a helloim.ai account (handles login and your plan, never your chat). Voice is transcribed by your device's own speech service, not by us; playback is on-device.
 - **Free to use.** The assistant, its faces and its voices are free.
-- **Pro, optional.** For people who'd rather not manage an API key: hosted AI and memory sync are rolling out to [helloim.ai Pro](https://helloim.ai/#pricing). Free stays complete.
+- **Pro, optional.** [helloim.ai Pro](https://helloim.ai/#pricing) adds memory sync across your machines (rolling out), early access to new faces and voices, and priority support. You still bring your own AI, and Free stays complete.
 - **Source-available, so "private" is something you can verify** — not just
   trust. The code is here to read.
 - **Windows** and a separate **Linux (amd64)** installer.
